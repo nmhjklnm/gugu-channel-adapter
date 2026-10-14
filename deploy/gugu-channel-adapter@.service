@@ -1,0 +1,21 @@
+[Unit]
+Description=gugu channel adapter (%i)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/gugu-channel-adapter/%i.env
+Environment=PROFILE=%i
+Environment=PROFILES_DIR=/opt/gugu-channel-adapter/profiles
+Environment=PYTHONPATH=/opt/gugu-channel-adapter/src
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 -m channel_adapter serve
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

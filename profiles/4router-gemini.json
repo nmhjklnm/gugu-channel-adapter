@@ -1,0 +1,8 @@
+{
+  "name": "4router-gemini",
+  "what": "挡在网关与 4Router 之间，只服务 Gemini 的渠道：修工具 schema（4Router 的 Gemini 后端拒数组缺 items、required 含未定义字段）。",
+  "used_by": "网关渠道 4router-gemini（模型 gemini-3.8-flash），Gemini 的兜底档。",
+  "upstream": "https://4router.net",
+  "rules": ["schema-array-items", "schema-required-undefined"],
+  "remove_when": "4Router 的 Gemini 后端放行这两类 schema，并用 acceptance/ 在不经本适配器时验收全绿。"
+}

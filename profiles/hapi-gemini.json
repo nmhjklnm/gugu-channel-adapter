@@ -1,0 +1,8 @@
+{
+  "name": "hapi-gemini",
+  "what": "挡在网关与 HAPI 之间，只服务 Gemini 的渠道：修工具 schema、给「仅 tool_result」轮次补文本、把 HAPI 的「200 加错误」改回 502，网关才能落到兜底渠道。",
+  "used_by": "网关渠道 gugu-hapi-gemini（模型 gemini-3.8-flash，模型名映射为 alice/gemini-3.8-flash），Gemini 的首选档。",
+  "upstream": "https://hapi.hc11.org",
+  "rules": ["schema-array-items", "schema-required-undefined", "pad-tool-result", "error-200-to-502"],
+  "remove_when": "HAPI 修好「末条仅 tool_result」「required 含未定义字段」「错误回 200」三个问题，并用 acceptance/ 在不经本适配器时验收全绿。"
+}

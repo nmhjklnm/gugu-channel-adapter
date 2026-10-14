@@ -1,0 +1,13 @@
+name: test
+on:
+  push: { branches: [main] }
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: 单元测试 + 文档契约（每条规则/实例必须写明是什么、何时用、何时可删）
+        run: PYTHONPATH=src python3 -m unittest discover -s tests -v
