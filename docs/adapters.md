@@ -12,11 +12,11 @@
 - 何时整个撤掉：4Router 的 Gemini 后端放行这两类 schema，并用 acceptance/ 在不经本适配器时验收全绿。
 
 ### hapi-gemini
-- 是什么：挡在网关与 HAPI 之间，只服务 Gemini 的渠道：修工具 schema、给「仅 tool_result」轮次补文本、把 HAPI 的「200 加错误」改回 502，网关才能落到兜底渠道。
+- 是什么：挡在网关与 HAPI 之间，只服务 Gemini 的渠道：修工具 schema、给「末个非 system 轮次只有工具结果」的请求补文本、把 HAPI 的「200 加错误」改回 502，网关才能落到兜底渠道。
 - 谁在用：网关渠道 gugu-hapi-gemini（模型 gemini-3.8-flash，模型名映射为 alice/gemini-3.8-flash），Gemini 的首选档。
 - 上游：https://hapi.hc11.org
 - 启用的规则：schema-array-items、schema-required-undefined、pad-tool-result、error-200-to-502
-- 何时整个撤掉：HAPI 修好「末条仅 tool_result」「required 含未定义字段」「错误回 200」三个问题，并用 acceptance/ 在不经本适配器时验收全绿。
+- 何时整个撤掉：HAPI 修好「末个非 system 轮次仅 tool_result」「required 含未定义字段」「错误回 200」三个问题，并用 acceptance/ 在不经本适配器时验收全绿。
 
 ## 规则目录：每条规则是什么、何时用、为什么、何时可删
 
@@ -37,20 +37,12 @@
 - 被哪些实例启用：4router-gemini、hapi-gemini
 
 ### pad-tool-result（请求规则 · 2026-10-14 加入）
-- 是什么：最后一条消息只含 tool_result（Anthropic 形态的 user 消息）或是 role=tool（OpenAI 形态）时，补一个最小文本 `.`。
-- 何时用：经 hapi 访问 Gemini 的任何带工具调用的第 2 轮及以后：Claude Code、Codex（responses 转 chat 后）、任何 OpenAI 兼容 Agent。
-- 为什么：hapi 的 Gemini 转换遇到「末条只有工具结果」就 400001 `Invalid request parameters`，补任意文本块（含空串）即通；同一请求多带一个文本块就能正常回答。
-- 证据：最小复现（messages=[user 文本, assistant tool_use, user 仅 tool_result]）：reqid ef8c52ba-d9e0-49dc-921e-8f900389b925（14:32:57）、b431a5b5-d4b5-4d72-8285-d555bd5beb64（14:33:49）；真实 Claude Code：96be2b6b-d557-49b1-bad1-6ce5429bdd7f（13:49:04）、831ddc1d-201d-4173-a284-92134352cd81（13:49:45）、d424ccfe-c6c4-4448-a3a6-eee923114eaf（13:50:24）；均 2026-10-14 UTC+8。对照：补 `.` 后同一请求 OK。详见 docs/vendor-reports/hapi-2026-10-14.md。
-- 何时可删：HAPI 修复「末条仅 tool_result」的转换；用 acceptance/gateway_tool_result.py 在不开此规则时三种形态均通过。
+- 是什么：messages 里「最后一条非 system 消息」只含 tool_result（Anthropic 形态的 user 消息）或是 role=tool（OpenAI 形态）时，补一个最小文本 `.`（前者补成该消息的文本块，后者在末尾追加一条 user）。
+- 何时用：经 hapi 访问 Gemini 的任何带工具调用的第 2 轮及以后：Claude Code、Codex（responses 转 chat 后）、任何 OpenAI 兼容 Agent。Claude Code 的第 2 轮形如 [user, system, assistant(tool_use), user(tool_result), system]——末尾还跟着 role=system 消息，所以必须跳过 system 去看。
+- 为什么：hapi 的 Gemini 转换里 role=system 消息不算数：去掉 system 后若最后一个轮次只有工具结果，就 400001 `Invalid request parameters`；补任意文本块（含空串）即通。是「末条只有工具结果」触发，不是 system 角色本身（去掉所有 system 仍失败；保留 system 但补文本即通）。
+- 证据：真 Claude Code 第 2 轮请求对 hapi 直连变体二分（2026-10-14 15:10–15:13 UTC+8）：原样/去中间 system/去末条 system/两条都去掉 → 全 400；末条 system 并入、两条都并入、末尾补 user、tool_result 补 `.`（system 全保留）→ 全通；OpenAI 形态 [user, assistant tool_calls, tool, system] 400，末尾补 user `.` 通。早先最小复现 reqid：ef8c52ba-d9e0-49dc-921e-8f900389b925、b431a5b5-d4b5-4d72-8285-d555bd5beb64；真实 Claude Code：96be2b6b-d557-49b1-bad1-6ce5429bdd7f、831ddc1d-201d-4173-a284-92134352cd81、d424ccfe-c6c4-4448-a3a6-eee923114eaf。详见 docs/vendor-reports/hapi-2026-10-14.md。
+- 何时可删：HAPI 修复「末个非 system 轮次只有工具结果」的转换；用 acceptance/gateway_tool_result.py 与 acceptance/run_cc.py 在不开此规则时仍全绿。
 - 被哪些实例启用：hapi-gemini
-
-### merge-system-messages（请求规则 · 2026-10-14 加入）
-- 是什么：messages 里 role=system 的消息（Claude Code 的 mid-conversation-system beta）并入相邻 user 消息的文本块，再合并相邻 user。
-- 何时用：上游不接受 messages 里的 system 角色时。目前只在 hapi 的 Claude 渠道观察到；Gemini 渠道经测不是必要（默认不开）。
-- 为什么：hapi 对 claude-sonnet-5 回 `role 'system' is not supported on this model`（400）。
-- 证据：预发 hapi 渠道 14 天 462 次（445 次 500 包装 + 17 次 400），集中在 2026-10-13 下午；Gemini 最小复现里带 system 角色的单轮请求是通的（hapi_repro 用例 D）。
-- 何时可删：HAPI 接受 system 角色消息，或我们不再经 hapi 提供 Claude。目前没有 profile 启用它，若一直没人用就删除。
-- 被哪些实例启用：（无）
 
 ### error-200-to-502（响应规则 · 2026-10-14 加入）
 - 是什么：上游对非流式请求回「HTTP 200 + 错误 JSON」（`{"type":"error"…}` 或只有 `error` 字段）时，把状态码改成 502，响应体原样。

@@ -58,21 +58,32 @@ class PadToolResult(unittest.TestCase):
         self.assertEqual(R.REGISTRY["pad-tool-result"].apply(b, None), 1)
         self.assertEqual(b["messages"][-1], {"role": "user", "content": "."})
 
+    def test_trailing_system_skipped_anthropic(self):
+        # Claude Code 真实第 2 轮形态: 末尾还跟着 system 消息
+        b = {"messages": [{"role": "user", "content": "q"}, {"role": "system", "content": "s1"},
+                          {"role": "assistant", "content": [{"type": "tool_use", "id": "t", "name": "x", "input": {}}]},
+                          {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t", "content": "r"}]},
+                          {"role": "system", "content": [{"type": "text", "text": "s2"}]}]}
+        self.assertEqual(R.REGISTRY["pad-tool-result"].apply(b, None), 1)
+        self.assertEqual(b["messages"][3]["content"][-1], {"type": "text", "text": "."})
+        self.assertEqual(len(b["messages"]), 5)
+        self.assertEqual(b["messages"][4]["role"], "system")
+
+    def test_trailing_system_openai_appends_user_at_end(self):
+        b = {"messages": [{"role": "user", "content": "q"}, {"role": "tool", "tool_call_id": "c", "content": "r"}, {"role": "system", "content": "s"}]}
+        self.assertEqual(R.REGISTRY["pad-tool-result"].apply(b, None), 1)
+        self.assertEqual(b["messages"][-1], {"role": "user", "content": "."})
+
+    def test_system_only_or_empty_untouched(self):
+        for msgs in ([], [{"role": "system", "content": "s"}]):
+            b = {"messages": msgs}
+            self.assertEqual(R.REGISTRY["pad-tool-result"].apply(b, None), 0)
+
     def test_untouched_when_text_present_or_plain(self):
         a = {"messages": [{"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t", "content": "r"}, {"type": "text", "text": "继续"}]}]}
         b = {"messages": [{"role": "user", "content": "你好"}]}
         self.assertEqual(R.REGISTRY["pad-tool-result"].apply(a, None), 0)
         self.assertEqual(R.REGISTRY["pad-tool-result"].apply(b, None), 0)
-
-
-class MergeSystem(unittest.TestCase):
-    def test_merge_into_adjacent_user(self):
-        b = {"messages": [{"role": "user", "content": [{"type": "text", "text": "a"}]}, {"role": "system", "content": "提醒"},
-                          {"role": "assistant", "content": [{"type": "tool_use", "id": "t", "name": "x", "input": {}}]},
-                          {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t", "content": "r"}]}, {"role": "system", "content": "又一条"}]}
-        self.assertEqual(R.REGISTRY["merge-system-messages"].apply(b, None), 2)
-        self.assertEqual([m["role"] for m in b["messages"]], ["user", "assistant", "user"])
-        self.assertEqual([c["type"] for c in b["messages"][-1]["content"]], ["tool_result", "text"])
 
 
 class Error200(unittest.TestCase):
