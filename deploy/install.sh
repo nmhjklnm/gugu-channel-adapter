@@ -33,7 +33,8 @@ for spec in "$@"; do
   if [ -n "$old" ] && systemctl is-active --quiet "$old"; then
     echo "   停旧服务 $old（保留单元文件，可回滚）"; systemctl disable --now "$old"
   fi
-  systemctl enable --now "gugu-channel-adapter@$prof"
+  systemctl enable "gugu-channel-adapter@$prof"
+  systemctl restart "gugu-channel-adapter@$prof"   # 已在跑的实例也要重启才会加载新代码
   sleep 1
   if ! systemctl is-active --quiet "gugu-channel-adapter@$prof" || ! probe "$bind" "$port"; then
     echo "   ✗ 失败，回滚"; systemctl disable --now "gugu-channel-adapter@$prof" || true
