@@ -21,7 +21,7 @@
 
 ## hapi-thinking-display
 
-- 渠道：预发 4 gugu-hapi-platform（2026-10-14 已上）；生产 8（**未同步**）。
+- 渠道：预发 4 gugu-hapi-platform（2026-10-14 已上）；生产 8（2026-10-16 核实已在位：param_override 与预发同一段，强制渠道 8 发 highlights 流式/非流式均 200；近 7 天生产渠道 8 仅 10-11 一次 display 报错，其后为 0）。
 - 是什么：`thinking.display` 为 `highlights` 时改成 `omitted`（1 条 set，条件 `thinking.display` 全等于 `highlights`）。
 - 何时用：Claude Code 对 claude-opus-5 / claude-sonnet-5 发 `highlights` 且请求落到 hapi。
 - 为什么：hapi 的上游只认 summarized/omitted，拒 highlights，并把这个 400 包成 HTTP 500，Claude Code 当服务器故障重试 10 次。
