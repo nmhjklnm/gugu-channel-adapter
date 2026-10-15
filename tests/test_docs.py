@@ -29,5 +29,16 @@ class DocsContract(unittest.TestCase):
             self.assertEqual(f.read(), docs.render(PROFILES), "docs/adapters.md 过期：PYTHONPATH=src python3 -m channel_adapter docs > docs/adapters.md")
 
 
+    def test_config_overrides_are_documented(self):
+        """配置级适配（param_override）同样必须写明 是什么/何时用/为什么/证据/何时可删。"""
+        with open(os.path.join(ROOT, "docs", "config-overrides.md"), encoding="utf-8") as f:
+            parts = f.read().split("\n## ")[1:]
+        self.assertTrue(parts)
+        for p in parts:
+            head = p.split("\n", 1)[0]
+            for label in ("渠道：", "是什么：", "何时用：", "为什么：", "证据：", "何时可删："):
+                self.assertIn(label, p, f"配置级适配 {head} 缺「{label}」")
+
+
 if __name__ == "__main__":
     unittest.main()

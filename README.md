@@ -21,6 +21,8 @@
 
 见 [docs/adapters.md](docs/adapters.md)（自动生成，含每个实例、每条规则的说明）。
 
+配置做得到的兼容不写适配器，直接配在网关渠道的 param_override 上，登记在 [docs/config-overrides.md](docs/config-overrides.md)（同样要写明用途与可删条件）。
+
 | 实例 | 上游 | 端口 | 网关渠道 |
 |---|---|---|---|
 | hapi-gemini | HAPI | 18770 | gugu-hapi-gemini（Gemini 首选档） |

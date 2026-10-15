@@ -1,9 +1,10 @@
 """用真 Claude Code(-p) 验收一条渠道链路: 隔离 HOME、指向网关、挂带问题 schema 的 stub MCP, 看含工具往返的链路是否真通。
- 用法: run_cc.py <base_url> <token> <label> [model]   (model 默认 gemini-3.8-flash)
+ 用法: [EFFORT=xhigh] run_cc.py <base_url> <token> <label> [model]   (model 默认 gemini-3.8-flash)
  验收标准: 三项都 is_error=False 且回显 STUB-OK-7731 / gemini-link-ok；「hi 能回」不算通。"""
 import json, os, subprocess, sys, tempfile, time
 base, token, label = sys.argv[1], sys.argv[2], sys.argv[3]
 MODEL = sys.argv[4] if len(sys.argv) > 4 else "gemini-3.8-flash"
+EFFORT = os.environ.get("EFFORT")   # 例: EFFORT=xhigh，复现 /effort xhigh 的请求形态
 here = os.path.dirname(os.path.abspath(__file__))
 MCP = os.path.join(tempfile.mkdtemp(prefix="cc-mcp-"), "mcp.json")
 json.dump({"mcpServers": {"stub": {"command": "python3", "args": [os.path.join(here, "stub_mcp.py")]}}}, open(MCP, "w"))
@@ -15,6 +16,7 @@ def run(name, prompt, allowed, max_turns=5):
     t = time.time()
     cmd = ["claude", "-p", prompt, "--model", MODEL, "--mcp-config", MCP,
            "--max-turns", str(max_turns), "--output-format", "json"]
+    if EFFORT: cmd += ["--effort", EFFORT]
     for a in allowed: cmd += ["--allowedTools", a]
     try:
         r = subprocess.run(cmd, env=env, cwd=cwd, capture_output=True, text=True, timeout=240)
