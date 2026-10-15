@@ -25,5 +25,5 @@
 - 是什么：`thinking.display` 为 `highlights` 时改成 `omitted`（1 条 set，条件 `thinking.display` 全等于 `highlights`）。
 - 何时用：Claude Code 对 claude-opus-5 / claude-sonnet-5 发 `highlights` 且请求落到 hapi。
 - 为什么：hapi 的上游只认 summarized/omitted，拒 highlights，并把这个 400 包成 HTTP 500，Claude Code 当服务器故障重试 10 次。
-- 证据：预发 2026-10-14 复现：display=highlights → 500，omitted/summarized → 200；改后 highlights 流式/非流式 200，其它值不变。
+- 证据：预发 2026-10-14 复现：display=highlights → 500，omitted/summarized → 200；改后 highlights 流式/非流式 200，其它值不变。2026-10-16 直连 hapi（不经网关）复测 5 次：highlights 仍回 `ValidationException: thinking.display: Input should be 'summarized', 'omitted'`（包在 HTTP 200 的 hapi_upstream_error 里，1～13 秒），omitted/summarized/不带 thinking 均成功——所以还不能删。
 - 何时可删：hapi 接受 highlights，或把它当真 400 返回（客户端会自行降级为 omitted）。
