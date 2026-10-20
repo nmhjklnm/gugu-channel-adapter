@@ -1,0 +1,7 @@
+**
+!src/
+!src/channel_adapter/
+!src/channel_adapter/hapi-adapter.mjs
+!deploy/
+!deploy/hapi-errors/
+!deploy/hapi-errors/Dockerfile

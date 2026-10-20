@@ -1,6 +1,6 @@
 # gugu-channel-adapter（渠道适配层）
 
-挡在咕咕模型网关（New API 原版，不 fork）与某个上游之间的小转发服务：**上游的请求格式/报错与客户端期望不合时，在这里就地修，网关和客户端都不用改。** 一个适配器实例 = 一个上游 + 一组启用的规则（profile）。
+挡在咕咕模型网关（New API 原版，不 fork）与某个上游之间的小转发服务：**上游的请求格式/报错与客户端期望不合时，在这里就地修，网关和客户端都不用改。** 一个适配器实例 = 一个上游 + 一组启用的规则（profile）。Gemini 实例沿用 Python 标准库运行时；`hapi-errors` 使用 Node 24 的原生 HTTP 运行时处理流提交、背压与取消，规则与可删条件仍统一登记。
 
 ```
 客户端(Claude Code/Codex…) → 网关(New API) → [渠道适配层:18770/18771] → 上游(HAPI / 4Router …)
@@ -27,21 +27,23 @@
 |---|---|---|---|
 | hapi-gemini | HAPI | 18770 | gugu-hapi-gemini（Gemini 首选档） |
 | 4router-gemini | 4Router | 18771 | 4router-gemini（Gemini 兜底档） |
+| hapi-errors | HAPI | Docker 内部 8318 | 普通 HAPI 渠道的早期错误包装；部署见 [docs/hapi-errors.md](docs/hapi-errors.md) |
 
 ## 不做什么
 
 - ❌ 不碰网关代码、不碰客户端；只在网关与上游之间改请求/响应。
 - ❌ 不存钥匙：认证头原样透传，钥匙只在网关渠道配置里。
 - ❌ 不做路由/重试/计费；换渠道仍是网关的事（适配器只负责把上游的假 200 改回 5xx，让网关能换）。
-- 流式（SSE）响应只透传，不改。
+- 既有 Gemini 实例的流式（SSE）响应仍只透传。`hapi-errors` 在有限起始窗口恢复错误状态；输出/工具调用后不重放。
 
 ## 使用
 
 ```
 # 本地起一个（默认 127.0.0.1:18770）
 PROFILE=hapi-gemini PYTHONPATH=src python3 -m channel_adapter serve
-# 测试
+# 测试（Python 3.12；HAPI 错误实例另需 Node 24，无第三方运行依赖）
 PYTHONPATH=src python3 -m unittest discover -s tests
+node --test tests/hapi-adapter.test.mjs
 # 部署（预发）
 deploy/push.sh ali2 172.19.0.1
 ```

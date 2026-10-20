@@ -24,6 +24,7 @@ class Rule:
     added: str           # 加入日期
     remove_when: str     # 什么条件下可以删
     apply: Optional[Callable] = None
+    runtime: str = "python"
 
 
 REGISTRY: dict[str, Rule] = {}
@@ -195,3 +196,15 @@ def request_rules(ids):
 
 def response_rules(ids):
     return [REGISTRY[i] for i in ids if REGISTRY[i].kind == "response"]
+
+
+# The stream boundary belongs to the Node HTTP runtime, not to a buffered Python response callback.
+REGISTRY["hapi-error-envelope"] = Rule(
+    id="hapi-error-envelope", kind="response", runtime="node",
+    what="在响应尚未提交时恢复 HAPI JSON/SSE 包装的错误状态与 request_id/trace_id；正常请求及响应字节透传，不自行重试。",
+    when="普通 HAPI 渠道的 Messages、Responses、Chat；JSON 最多检查 1 MiB，SSE 起始最多 64 KiB / 30 秒。输出、工具调用或边界到达后不再改状态或重放。",
+    why="HAPI 把上游 400/过载包成 HTTP 200 流事件，官方 New API 无法按 HTTP 状态作正确恢复/换路。原有 error-200-to-502 只覆盖非流式 JSON，且不能区分参数错误。",
+    evidence="2026-10-20 直连 HAPI Luna Messages 为 HTTP 200 + 上游 400 InvalidParameter；经规则为 400，保留 request_id 1de187dc-1c79-4de5-a174-1e3e50af5a5b、trace_id a4a2e83f78a5dfe432a6f967fdc2cddc。隔离官方 New API 三协议换路、真实工具往返及 Windows Codex 两轮通过。详见 docs/vendor-reports/hapi-errors-2026-10-20.md。",
+    added="2026-10-20",
+    remove_when="HAPI 在提交响应前对参数拒绝、限流、过载直接返回正确 4xx/5xx，且绕过本实例重跑三协议流式、工具往返和真客户端均通过。已提交响应后的流内错误本身是正常协议行为，不作为永远保留此规则的理由。",
+)

@@ -1,5 +1,6 @@
 import os
 import sys
+import shutil
 
 from . import docs, server
 
@@ -17,6 +18,15 @@ def main(argv=None):
         sys.stdout.write(docs.render(DEFAULT_PROFILES))
         return 0
     profile = server.load_profile(os.environ["PROFILE"], DEFAULT_PROFILES)
+    if profile.get("runtime") == "node":
+        if os.environ.get("UPSTREAM"):
+            raise SystemExit("HAPI 错误实例使用固定上游；故障注入请调用 Node createHapiAdapter 工厂")
+        node = shutil.which("node")
+        if not node:
+            raise SystemExit("hapi-errors 需要 Node 24；也可按 docs/hapi-errors.md 使用固定镜像")
+        env = dict(os.environ, HOST=os.environ.get("BIND", "127.0.0.1"), PORT=os.environ.get("PORT", "8318"))
+        os.execvpe(node, [node, os.path.join(HERE, "hapi-adapter.mjs")], env)
+        return 0
     server.serve(profile, os.environ.get("BIND", "127.0.0.1"), int(os.environ.get("PORT", "18770")))
     return 0
 

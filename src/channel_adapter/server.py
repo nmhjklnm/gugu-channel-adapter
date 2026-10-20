@@ -22,10 +22,19 @@ def load_profile(name_or_path: str, profiles_dir: str) -> dict:
     unknown = [i for i in p.get("rules", []) if i not in R.REGISTRY]
     if unknown:
         raise SystemExit(f"profile {p.get('name')} 引用了不存在的规则: {unknown}")
+    runtime = p.get("runtime", "python")
+    if runtime not in ("python", "node"):
+        raise SystemExit(f"未知 runtime: {runtime}")
+    if any(R.REGISTRY[i].runtime != runtime for i in p.get("rules", [])):
+        raise SystemExit(f"profile {p.get('name')} 的规则与 runtime 不匹配")
+    if runtime == "node" and (p.get("rules") != ["hapi-error-envelope"] or p.get("upstream") != "https://hapi.hc11.org"):
+        raise SystemExit("HAPI Node runtime 只支持固定 HAPI 上游及 hapi-error-envelope 规则")
     return p
 
 
 def make_handler(profile: dict, read_timeout: int = 900):
+    if profile.get("runtime", "python") != "python":
+        raise ValueError("此 profile 使用 Node HTTP runtime，请通过 channel_adapter serve 启动")
     upstream = os.environ.get("UPSTREAM") or profile["upstream"]   # 允许部署时/测试时覆盖
     req_rules = R.request_rules(profile["rules"])
     resp_rules = R.response_rules(profile["rules"])
