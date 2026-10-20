@@ -8,13 +8,23 @@
 - 是什么：挡在网关与 4Router 之间，只服务 Gemini 的渠道：修工具 schema（4Router 的 Gemini 后端拒数组缺 items、required 含未定义字段）。
 - 谁在用：网关渠道 4router-gemini（模型 gemini-3.8-flash），Gemini 的兜底档。
 - 上游：https://4router.net
+- 运行时：python
 - 启用的规则：schema-array-items、schema-required-undefined
 - 何时整个撤掉：4Router 的 Gemini 后端放行这两类 schema，并用 acceptance/ 在不经本适配器时验收全绿。
+
+### hapi-errors
+- 是什么：普通 HAPI 渠道的专用错误适配：在响应提交前恢复包装错误，保留厂商请求号，不修改请求、模型和工具形状；独立于 Gemini schema 规则。
+- 谁在用：共享测试 HAPI 渠道 gugu-hapi-platform（4）和 hapi-free-luna-responses（80）；Docker 内部端口 8318，无宿主发布端口。
+- 上游：https://hapi.hc11.org
+- 运行时：node
+- 启用的规则：hapi-error-envelope
+- 何时整个撤掉：HAPI 直接正确返回早期错误状态与请求号，绕过本实例后三协议流式、工具往返和真客户端通过；先恢复渠道直连，再停止实例。
 
 ### hapi-gemini
 - 是什么：挡在网关与 HAPI 之间，只服务 Gemini 的渠道：修工具 schema、给「末个非 system 轮次只有工具结果」的请求补文本、把 HAPI 的「200 加错误」改回 502，网关才能落到兜底渠道。
 - 谁在用：网关渠道 gugu-hapi-gemini（模型 gemini-3.8-flash，模型名映射为 alice/gemini-3.8-flash），Gemini 的首选档。
 - 上游：https://hapi.hc11.org
+- 运行时：python
 - 启用的规则：schema-array-items、schema-required-undefined、pad-tool-result、error-200-to-502
 - 何时整个撤掉：HAPI 修好「末个非 system 轮次仅 tool_result」「required 含未定义字段」「错误回 200」三个问题，并用 acceptance/ 在不经本适配器时验收全绿。
 
@@ -51,3 +61,11 @@
 - 证据：hapi 直连最小复现的所有失败用例状态码均为 200（reqid 同 pad-tool-result）；故障注入验证：预发 hapi 渠道返回 200+错误时，4router 兜底渠道接住 5/5 请求。
 - 何时可删：hapi 对错误返回真实 4xx/5xx。注意生产网关（fork gugu.9）已有「包装 400 还原」逻辑，删除前确认两者行为。
 - 被哪些实例启用：hapi-gemini
+
+### hapi-error-envelope（响应规则 · 2026-10-20 加入）
+- 是什么：在响应尚未提交时恢复 HAPI JSON/SSE 包装的错误状态与 request_id/trace_id；正常请求及响应字节透传，不自行重试。
+- 何时用：普通 HAPI 渠道的 Messages、Responses、Chat；JSON 最多检查 1 MiB，SSE 起始最多 64 KiB / 30 秒。输出、工具调用或边界到达后不再改状态或重放。
+- 为什么：HAPI 把上游 400/过载包成 HTTP 200 流事件，官方 New API 无法按 HTTP 状态作正确恢复/换路。原有 error-200-to-502 只覆盖非流式 JSON，且不能区分参数错误。
+- 证据：2026-10-20 直连 HAPI Luna Messages 为 HTTP 200 + 上游 400 InvalidParameter；经规则为 400，保留 request_id 1de187dc-1c79-4de5-a174-1e3e50af5a5b、trace_id a4a2e83f78a5dfe432a6f967fdc2cddc。隔离官方 New API 三协议换路、真实工具往返及 Windows Codex 两轮通过。详见 docs/vendor-reports/hapi-errors-2026-10-20.md。
+- 何时可删：HAPI 在提交响应前对参数拒绝、限流、过载直接返回正确 4xx/5xx，且绕过本实例重跑三协议流式、工具往返和真客户端均通过。已提交响应后的流内错误本身是正常协议行为，不作为永远保留此规则的理由。
+- 被哪些实例启用：hapi-errors

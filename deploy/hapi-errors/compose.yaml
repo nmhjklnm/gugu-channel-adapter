@@ -1,0 +1,27 @@
+services:
+  hapi-errors:
+    platform: linux/amd64
+    build:
+      context: ../..
+      dockerfile: deploy/hapi-errors/Dockerfile
+    image: gugu/channel-adapter:hapi-errors
+    restart: unless-stopped
+    init: true
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    mem_limit: 256m
+    pids_limit: 64
+    networks:
+      gateway:
+        aliases: [hapi-adapter]
+    healthcheck:
+      test: ['CMD', 'node', '-e', 'fetch("http://127.0.0.1:8318/healthz").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))']
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+networks:
+  gateway:
+    external: true
+    name: ${HAPI_ADAPTER_NETWORK:?Set the existing New API Docker network}

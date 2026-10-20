@@ -10,6 +10,10 @@
 
 适配器绑在 docker 网桥 IP（预发 `172.19.0.1`、生产 `172.20.0.1`），网关容器经它访问；不监听公网。端口固定：hapi-gemini 18770、4router-gemini 18771，与网关渠道 base_url 对应。
 
+## HAPI 错误实例
+
+`hapi-errors` 与既有 Gemini systemd 实例独立，使用本仓的 `deploy/hapi-errors/compose.yaml`，只加入现有网关 Docker 网络、不发布宿主端口。源码、镜像定义、配置和回滚说明均归本仓，详见 [hapi-errors.md](hapi-errors.md)。`push.sh` 仍只更新两个 Gemini 实例，不会偷偷启用或替换 HAPI 错误实例。
+
 ## 现在跑在哪
 
 - 预发 ali2（`172.19.0.1`）：2026-10-14 起。
