@@ -8,7 +8,9 @@
 | `/etc/gugu-channel-adapter/<profile>.env` | 该实例的 `BIND`、`PORT`（安装脚本写） |
 | `gugu-channel-adapter@<profile>.service` | systemd 模板实例；日志 `journalctl -u gugu-channel-adapter@hapi-gemini` |
 
-适配器绑在 docker 网桥 IP（预发 `172.19.0.1`、生产 `172.20.0.1`），网关容器经它访问；不监听公网。端口固定：hapi-gemini 18770、4router-gemini 18771，与网关渠道 base_url 对应。
+适配器绑在 docker 网桥 IP（预发 `172.19.0.1`、生产 `172.20.0.1`），网关容器经它访问；不监听公网。端口固定：hapi-gemini 18770、4router-gemini 18771、glm-gateway 18772，与网关渠道 base_url 对应。
+
+上游只能经某个 SOCKS5 出口到达时（glm-gateway：GLM 网关在网关机上解析不到，原先由渠道自己的 proxy 走 `172.19.0.1:18443`），实例环境带 `UPSTREAM_SOCKS5=<host>:<port>`，域名交给代理解析；`install.sh glm-gateway=172.19.0.1:18772@172.19.0.1:18443` 会写进该实例的 env 文件。渠道 base_url 指向适配器后，渠道自己的 proxy 要清掉（适配器在网关机本地，出口那头连不到它）。
 
 ## HAPI 错误实例
 

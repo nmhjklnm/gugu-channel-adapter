@@ -12,6 +12,14 @@
 - 启用的规则：schema-array-items、schema-required-undefined
 - 何时整个撤掉：4Router 的 Gemini 后端放行这两类 schema，并用 acceptance/ 在不经本适配器时验收全绿。
 
+### glm-gateway
+- 是什么：挡在网关与 GLM 网关（其后是 AWS Bedrock 上的 Claude）之间：删掉 Bedrock 拒收的空 system 消息/空文本块。其余请求字节不变。
+- 谁在用：共享测试网关渠道 15 gugu-glm-gateway（claude-opus-5-5 等）。GLM 网关只能经网关机的 SOCKS5 出口到达，部署时给 UPSTREAM_SOCKS5。
+- 上游：https://api-gateway.glm.ai
+- 运行时：python
+- 启用的规则：drop-empty-system-message
+- 何时整个撤掉：GLM 网关接受空 system 消息（规则 drop-empty-system-message 的可删条件），或渠道不再经 GLM 网关提供 Claude；先把渠道 base_url 改回直连并恢复渠道自己的代理，再停实例。
+
 ### hapi-errors
 - 是什么：普通 HAPI 渠道的专用适配，只修 HAPI 自己读不懂的格式：在响应提交前恢复包装错误、保留厂商请求号；Responses 请求里只有 summary 的 reasoning 项补上 content。其余请求字节、模型和工具形状不变；独立于 Gemini schema 规则。
 - 谁在用：共享测试 HAPI 渠道 gugu-hapi-platform（4）和 hapi-free-luna-responses（80）；Docker 内部端口 8318，无宿主发布端口。
@@ -53,6 +61,14 @@
 - 证据：真 Claude Code 第 2 轮请求对 hapi 直连变体二分（2026-10-14 15:10–15:13 UTC+8）：原样/去中间 system/去末条 system/两条都去掉 → 全 400；末条 system 并入、两条都并入、末尾补 user、tool_result 补 `.`（system 全保留）→ 全通；OpenAI 形态 [user, assistant tool_calls, tool, system] 400，末尾补 user `.` 通。早先最小复现 reqid：ef8c52ba-d9e0-49dc-921e-8f900389b925、b431a5b5-d4b5-4d72-8285-d555bd5beb64；真实 Claude Code：96be2b6b-d557-49b1-bad1-6ce5429bdd7f、831ddc1d-201d-4173-a284-92134352cd81、d424ccfe-c6c4-4448-a3a6-eee923114eaf。详见 docs/vendor-reports/hapi-2026-10-14.md。
 - 何时可删：HAPI 修复「末个非 system 轮次只有工具结果」的转换；用 acceptance/gateway_tool_result.py 与 acceptance/run_cc.py 在不开此规则时仍全绿。
 - 被哪些实例启用：hapi-gemini
+
+### drop-empty-system-message（请求规则 · 2026-10-23 加入）
+- 是什么：messages 里 role=system 的项：content 为 `[]`、`""` 或只含空文本块（`{type:"text", text:""}`）时整条删掉；空文本块与非空块并存时只删空块。其余消息与字段不动；没有这种项的请求原样转发，字节不变。
+- 何时用：Claude Code（≥2.1.280，能用 claude-opus-5-5 的版本）在 /compact 之后的每一轮：压缩后 messages[1] 是一条 content 为 [] 的会话中 system 消息（beta mid-conversation-system-2026-04-07），请求落到 GLM 网关（其后是 AWS Bedrock）。
+- 为什么：Bedrock 拒收空的 system 消息：400 `ValidationException: messages.1: system content must contain at least one block`；只含空文本块时是 `system text blocks must contain non-whitespace text`。GLM 网关在自己的后端之间重试 6～8 次后仍 400，这一轮直接失败。客户端遇到 thinking.display 报错会自行去掉 display 重发，但空 system 消息它不会去掉，所以压缩后的会话再也问不通。
+- 证据：2026-10-23 共享测试网关渠道 15（gugu-glm-gateway）：产品内 Claude Code Work 形态压缩后一轮 400（网关日志 186325、186327 同型）；最小请求每种 3 次：system content 为 [] 或 "" → 400×4、另 2 次 35～45 秒后才由非 Bedrock 后端接住；[{text:""}] → 400×3；非空 system 或不带 system → 200×6。CLI 2.1.280 / 2.1.293 / 2.1.308 压缩后同型 400。详见 docs/vendor-reports/glm-bedrock-2026-10-23.md。
+- 何时可删：GLM 网关（及其后的 Bedrock）接受空 system 消息：绕过本规则，把 messages[1] 为 system [] 的最小请求直接发渠道 15 稳定 200；或 Claude Code 压缩后不再发空 system 消息。
+- 被哪些实例启用：glm-gateway
 
 ### error-200-to-502（响应规则 · 2026-10-14 加入）
 - 是什么：上游对非流式请求回「HTTP 200 + 错误 JSON」（`{"type":"error"…}` 或只有 `error` 字段）时，把状态码改成 502，响应体原样。

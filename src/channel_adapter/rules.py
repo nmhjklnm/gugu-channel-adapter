@@ -165,6 +165,47 @@ def pad_tool_result(body, ctx):
     return 0
 
 
+def _empty_text_block(b):
+    return isinstance(b, dict) and b.get("type") == "text" and b.get("text") == ""
+
+
+@rule(
+    id="drop-empty-system-message", kind="request",
+    what="messages 里 role=system 的项：content 为 `[]`、`\"\"` 或只含空文本块（`{type:\"text\", text:\"\"}`）时整条删掉；"
+         "空文本块与非空块并存时只删空块。其余消息与字段不动；没有这种项的请求原样转发，字节不变。",
+    when="Claude Code（≥2.1.280，能用 claude-opus-5-5 的版本）在 /compact 之后的每一轮：压缩后 messages[1] 是一条 content 为 [] 的会话中 system 消息"
+         "（beta mid-conversation-system-2026-04-07），请求落到 GLM 网关（其后是 AWS Bedrock）。",
+    why="Bedrock 拒收空的 system 消息：400 `ValidationException: messages.1: system content must contain at least one block`；"
+        "只含空文本块时是 `system text blocks must contain non-whitespace text`。GLM 网关在自己的后端之间重试 6～8 次后仍 400，这一轮直接失败。"
+        "客户端遇到 thinking.display 报错会自行去掉 display 重发，但空 system 消息它不会去掉，所以压缩后的会话再也问不通。",
+    evidence="2026-10-23 共享测试网关渠道 15（gugu-glm-gateway）：产品内 Claude Code Work 形态压缩后一轮 400（网关日志 186325、186327 同型）；"
+             "最小请求每种 3 次：system content 为 [] 或 \"\" → 400×4、另 2 次 35～45 秒后才由非 Bedrock 后端接住；[{text:\"\"}] → 400×3；"
+             "非空 system 或不带 system → 200×6。CLI 2.1.280 / 2.1.293 / 2.1.308 压缩后同型 400。详见 docs/vendor-reports/glm-bedrock-2026-10-23.md。",
+    added="2026-10-23",
+    remove_when="GLM 网关（及其后的 Bedrock）接受空 system 消息：绕过本规则，把 messages[1] 为 system [] 的最小请求直接发渠道 15 稳定 200；"
+                "或 Claude Code 压缩后不再发空 system 消息。",
+)
+def drop_empty_system_message(body, ctx):
+    msgs = body.get("messages")
+    if not isinstance(msgs, list):
+        return 0
+    n = 0
+    keep = []
+    for m in msgs:
+        if isinstance(m, dict) and m.get("role") == "system":
+            c = m.get("content")
+            if c == "" or c == [] or (isinstance(c, list) and all(_empty_text_block(b) for b in c)):
+                n += 1
+                continue
+            if isinstance(c, list) and any(_empty_text_block(b) for b in c):
+                m["content"] = [b for b in c if not _empty_text_block(b)]
+                n += 1
+        keep.append(m)
+    if n:
+        msgs[:] = keep
+    return n
+
+
 # ---------------------------------------------------------------- 响应规则
 
 @rule(

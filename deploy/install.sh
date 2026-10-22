@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # 在目标机上（root）运行，代码已由 push.sh 放进 /opt/gugu-channel-adapter。
-# 用法: install.sh <profile>=<bind>:<port> ...
+# 用法: install.sh <profile>=<bind>:<port>[@<socks5 host>:<port>] ...
 #   例: install.sh hapi-gemini=172.19.0.1:18770 4router-gemini=172.19.0.1:18771
+#       install.sh glm-gateway=172.19.0.1:18772@172.19.0.1:18443   # 上游只能经这个 SOCKS5 出口到达
 # 逐个实例切换；某个实例探测失败 → 立刻把旧 shim 服务拉回来并退出非 0。
 set -euo pipefail
 ROOT=/opt/gugu-channel-adapter
@@ -25,9 +26,11 @@ PY
 }
 
 for spec in "$@"; do
-  prof=${spec%%=*}; addr=${spec#*=}; bind=${addr%:*}; port=${addr##*:}
+  prof=${spec%%=*}; rest=${spec#*=}; addr=${rest%%@*}; bind=${addr%:*}; port=${addr##*:}
+  socks=; [ "$rest" = "$addr" ] || socks=${rest#*@}
   [ -f "$ROOT/profiles/$prof.json" ] || { echo "没有 profile: $prof"; exit 2; }
   printf 'BIND=%s\nPORT=%s\n' "$bind" "$port" > "$ETC/$prof.env"
+  [ -z "$socks" ] || printf 'UPSTREAM_SOCKS5=%s\n' "$socks" >> "$ETC/$prof.env"
   old=${LEGACY[$prof]:-}
   echo "[$prof] $bind:$port"
   if [ -n "$old" ] && systemctl is-active --quiet "$old"; then
