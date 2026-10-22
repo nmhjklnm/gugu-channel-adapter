@@ -27,14 +27,14 @@
 |---|---|---|---|
 | hapi-gemini | HAPI | 18770 | gugu-hapi-gemini（Gemini 首选档） |
 | 4router-gemini | 4Router | 18771 | 4router-gemini（Gemini 兜底档） |
-| hapi-errors | HAPI | Docker 内部 8318 | 普通 HAPI 渠道的早期错误包装；部署见 [docs/hapi-errors.md](docs/hapi-errors.md) |
+| hapi-errors | HAPI | Docker 内部 8318 | 普通 HAPI 渠道的早期错误包装、Responses 里只有 summary 的推理补 content；部署见 [docs/hapi-errors.md](docs/hapi-errors.md) |
 
 ## 不做什么
 
 - ❌ 不碰网关代码、不碰客户端；只在网关与上游之间改请求/响应。
 - ❌ 不存钥匙：认证头原样透传，钥匙只在网关渠道配置里。
 - ❌ 不做路由/重试/计费；换渠道仍是网关的事（适配器只负责把上游的假 200 改回 5xx，让网关能换）。
-- 既有 Gemini 实例的流式（SSE）响应仍只透传。`hapi-errors` 在有限起始窗口恢复错误状态；输出/工具调用后不重放。
+- 既有 Gemini 实例的流式（SSE）响应仍只透传。`hapi-errors` 在有限起始窗口恢复错误状态；输出/工具调用后不重放；请求只改 Responses 里只有 summary 的推理项。
 
 ## 使用
 

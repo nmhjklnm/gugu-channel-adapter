@@ -13,12 +13,12 @@
 - 何时整个撤掉：4Router 的 Gemini 后端放行这两类 schema，并用 acceptance/ 在不经本适配器时验收全绿。
 
 ### hapi-errors
-- 是什么：普通 HAPI 渠道的专用错误适配：在响应提交前恢复包装错误，保留厂商请求号，不修改请求、模型和工具形状；独立于 Gemini schema 规则。
+- 是什么：普通 HAPI 渠道的专用适配，只修 HAPI 自己读不懂的格式：在响应提交前恢复包装错误、保留厂商请求号；Responses 请求里只有 summary 的 reasoning 项补上 content。其余请求字节、模型和工具形状不变；独立于 Gemini schema 规则。
 - 谁在用：共享测试 HAPI 渠道 gugu-hapi-platform（4）和 hapi-free-luna-responses（80）；Docker 内部端口 8318，无宿主发布端口。
 - 上游：https://hapi.hc11.org
 - 运行时：node
-- 启用的规则：hapi-error-envelope
-- 何时整个撤掉：HAPI 直接正确返回早期错误状态与请求号，绕过本实例后三协议流式、工具往返和真客户端通过；先恢复渠道直连，再停止实例。
+- 启用的规则：hapi-error-envelope、responses-reasoning-content
+- 何时整个撤掉：HAPI 直接正确返回早期错误状态与请求号，并且能读只有 summary 的 reasoning（两条规则各自的可删条件，见 docs/adapters.md）；绕过本实例后三协议流式、工具往返和真客户端通过；先恢复渠道直连，再停止实例。
 
 ### hapi-gemini
 - 是什么：挡在网关与 HAPI 之间，只服务 Gemini 的渠道：修工具 schema、给「末个非 system 轮次只有工具结果」的请求补文本、把 HAPI 的「200 加错误」改回 502，网关才能落到兜底渠道。
@@ -68,4 +68,12 @@
 - 为什么：HAPI 把上游 400/过载包成 HTTP 200 流事件，官方 New API 无法按 HTTP 状态作正确恢复/换路。原有 error-200-to-502 只覆盖非流式 JSON，且不能区分参数错误。
 - 证据：2026-10-20 直连 HAPI Luna Messages 为 HTTP 200 + 上游 400 InvalidParameter；经规则为 400，保留 request_id 1de187dc-1c79-4de5-a174-1e3e50af5a5b、trace_id a4a2e83f78a5dfe432a6f967fdc2cddc。隔离官方 New API 三协议换路、真实工具往返及 Windows Codex 两轮通过。详见 docs/vendor-reports/hapi-errors-2026-10-20.md。
 - 何时可删：HAPI 在提交响应前对参数拒绝、限流、过载直接返回正确 4xx/5xx，且绕过本实例重跑三协议流式、工具往返和真客户端均通过。已提交响应后的流内错误本身是正常协议行为，不作为永远保留此规则的理由。
+- 被哪些实例启用：hapi-errors
+
+### responses-reasoning-content（请求规则 · 2026-10-22 加入）
+- 是什么：/v1/responses 请求的 input 里，只有 summary、没有 content 和 encrypted_content 的 reasoning 项，把 summary 文本补成 content:[{type:reasoning_text}]。没有这种项的请求原样转发，字节不变。
+- 何时用：同一个模型的渠道池里，别家上游只回 summary 形式的推理（如 kozeai 上的 deepseek-v4.1-flash）；网关失败转移后，下一轮回到 HAPI，Codex 会原样回传这些推理项。
+- 为什么：HAPI 只从 content / encrypted_content 读推理，不读 summary。DeepSeek 思考模式要求带工具调用的那一轮把推理正文回传，缺了就是上游 400 InvalidParameter，而且 400 不重试，用户这一轮直接断掉。
+- 证据：2026-10-22 共享测试网关：钉渠道 4→60→4 可稳定复现第 3 步 400 InvalidParameter。同一份第 3 步输入交错各发 8 次：补 content 的 200×7（另 1 次 HAPI 卡满 180 s），不补的 400×7（另 1 次 502）。kozeai 回的 summary 就是推理原文，不是二次摘要。补写后的 Codex 形状任务（四次 shell 调用后作答）走完全程，答案正确。
+- 何时可删：HAPI 能读 summary 形式的 reasoning（绕过本规则，用 summary-only 推理项重放第 3 步得到 200），或者同一模型的渠道池里不再有只回 summary 的上游。
 - 被哪些实例启用：hapi-errors
