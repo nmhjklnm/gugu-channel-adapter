@@ -160,3 +160,26 @@ test('summary-only reasoning in a Responses body gets content; other bodies pass
     assert.equal(seen.at(-1).body.toString(), body, path);
   }
 });
+
+test('chunked Responses requests: the filled body is sent with content-length and no transfer-encoding', async t => {
+  const seen = [];
+  const base = await fixture(t, async (q, s) => {
+    const chunks = []; for await (const c of q) chunks.push(c);
+    seen.push({ body: Buffer.concat(chunks), length: q.headers['content-length'], te: q.headers['transfer-encoding'] });
+    s.writeHead(200, { 'content-type': 'application/json' }); s.end('{}');
+  });
+  const send = (path, body) => new Promise((resolve, reject) => {
+    const q = http.request(base + path, { method: 'POST', headers: { 'transfer-encoding': 'chunked' } }, r => { r.resume(); r.once('end', resolve); });
+    q.once('error', reject);
+    const half = Math.floor(body.length / 2); q.write(body.subarray(0, half)); q.end(body.subarray(half));
+  });
+  const foreign = Buffer.from(JSON.stringify({ input: [{ type: 'reasoning', summary: [{ type: 'summary_text', text: 'r' }] }] }));
+  const own = Buffer.from('{ "input": [{"type":"message","role":"user","content":"hi"}] }');
+  await send('/v1/responses', foreign);
+  assert.equal(seen[0].te, undefined); assert.equal(Number(seen[0].length), seen[0].body.length);
+  assert.deepEqual(JSON.parse(seen[0].body).input[0].content, [{ type: 'reasoning_text', text: 'r' }]);
+  await send('/v1/responses', own);
+  assert.deepEqual(seen[1].body, own); assert.ok(!(seen[1].te && seen[1].length), 'never both transfer-encoding and content-length');
+  await send('/v1/messages', own);
+  assert.deepEqual(seen[2].body, own); assert.equal(seen[2].te, 'chunked'); assert.equal(seen[2].length, undefined);
+});

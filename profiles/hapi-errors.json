@@ -5,5 +5,5 @@
   "used_by": "共享测试 HAPI 渠道 gugu-hapi-platform（4）和 hapi-free-luna-responses（80）；Docker 内部端口 8318，无宿主发布端口。",
   "upstream": "https://hapi.hc11.org",
   "rules": ["hapi-error-envelope", "responses-reasoning-content"],
-  "remove_when": "两条规则都满足各自的可删条件（见 docs/adapters.md）后，先恢复渠道直连，再停止实例。"
+  "remove_when": "HAPI 直接正确返回早期错误状态与请求号，并且能读只有 summary 的 reasoning（两条规则各自的可删条件，见 docs/adapters.md）；绕过本实例后三协议流式、工具往返和真客户端通过；先恢复渠道直连，再停止实例。"
 }

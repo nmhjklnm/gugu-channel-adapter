@@ -18,7 +18,7 @@
 - 上游：https://hapi.hc11.org
 - 运行时：node
 - 启用的规则：hapi-error-envelope、responses-reasoning-content
-- 何时整个撤掉：两条规则都满足各自的可删条件（见 docs/adapters.md）后，先恢复渠道直连，再停止实例。
+- 何时整个撤掉：HAPI 直接正确返回早期错误状态与请求号，并且能读只有 summary 的 reasoning（两条规则各自的可删条件，见 docs/adapters.md）；绕过本实例后三协议流式、工具往返和真客户端通过；先恢复渠道直连，再停止实例。
 
 ### hapi-gemini
 - 是什么：挡在网关与 HAPI 之间，只服务 Gemini 的渠道：修工具 schema、给「末个非 system 轮次只有工具结果」的请求补文本、把 HAPI 的「200 加错误」改回 502，网关才能落到兜底渠道。
