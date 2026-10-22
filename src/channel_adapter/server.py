@@ -15,6 +15,10 @@ HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", 
        "transfer-encoding", "upgrade", "content-length", "host"}
 
 
+# The Node runtime implements exactly these rules; a profile cannot switch one of them off or add a Python rule.
+NODE_RULES = ["hapi-error-envelope", "responses-reasoning-content"]
+
+
 def load_profile(name_or_path: str, profiles_dir: str) -> dict:
     path = name_or_path if name_or_path.endswith(".json") else os.path.join(profiles_dir, name_or_path + ".json")
     with open(path, encoding="utf-8") as f:
@@ -27,8 +31,8 @@ def load_profile(name_or_path: str, profiles_dir: str) -> dict:
         raise SystemExit(f"未知 runtime: {runtime}")
     if any(R.REGISTRY[i].runtime != runtime for i in p.get("rules", [])):
         raise SystemExit(f"profile {p.get('name')} 的规则与 runtime 不匹配")
-    if runtime == "node" and (p.get("rules") != ["hapi-error-envelope"] or p.get("upstream") != "https://hapi.hc11.org"):
-        raise SystemExit("HAPI Node runtime 只支持固定 HAPI 上游及 hapi-error-envelope 规则")
+    if runtime == "node" and (p.get("rules") != NODE_RULES or p.get("upstream") != "https://hapi.hc11.org"):
+        raise SystemExit(f"HAPI Node runtime 只支持固定 HAPI 上游及 {NODE_RULES} 规则")
     return p
 
 

@@ -123,7 +123,7 @@ test('client disconnect cancels the in-flight HAPI request', async t => {
 
 test('reject absolute targets, unknown paths and do not forward health checks', async t => {
   let hits = 0; const base = await fixture(t, (_q, s) => { hits++; s.end(); });
-  const health = await fetch(base + '/healthz'); assert.equal(health.status, 200); assert.deepEqual(await health.json(), { ok: true, requests: 0, normalized_errors: 0, active_requests: 0 });
+  const health = await fetch(base + '/healthz'); assert.equal(health.status, 200); assert.deepEqual(await health.json(), { ok: true, requests: 0, normalized_errors: 0, reasoning_filled: 0, active_requests: 0 });
   assert.equal((await post(base, '//example.com/v1/messages')).status, 404);
   assert.equal((await post(base, '/api/channel/')).status, 404);
   assert.equal(hits, 0);
@@ -137,4 +137,26 @@ test('preserves request and trace IDs carried inside the HAPI wrapper', async t 
   assert.equal(r.status, 400); assert.equal(body.request_id, 'vendor-37'); assert.equal(body.trace_id, 'trace-37');
   assert.equal(r.headers.get('x-hapi-upstream-request-id'), 'vendor-37');
   assert.equal(r.headers.get('x-hapi-upstream-trace-id'), 'trace-37');
+});
+
+test('summary-only reasoning in a Responses body gets content; other bodies pass byte-identical', async t => {
+  const seen = [];
+  const base = await fixture(t, async (q, s) => {
+    const chunks = []; for await (const c of q) chunks.push(c);
+    seen.push({ body: Buffer.concat(chunks), length: q.headers['content-length'] });
+    s.writeHead(200, { 'content-type': 'application/json' }); s.end('{}');
+  });
+  const foreign = { input: [{ type: 'reasoning', summary: [{ type: 'summary_text', text: 'a' }, { type: 'summary_text', text: 'b' }] },
+    { type: 'function_call', name: 'shell', arguments: '{}', call_id: 'c1' }] };
+  await post(base, '/v1/responses', { body: JSON.stringify(foreign) });
+  const sent = JSON.parse(seen[0].body);
+  assert.deepEqual(sent.input[0].content, [{ type: 'reasoning_text', text: 'a\n\nb' }]);
+  assert.deepEqual(sent.input[1], foreign.input[1]);
+  assert.equal(Number(seen[0].length), seen[0].body.length);
+  assert.equal((await (await fetch(base + '/healthz')).json()).reasoning_filled, 1);
+  const own = '{ "input": [{"type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"x"}],"encrypted_content":"h"}] }';
+  for (const [path, body] of [['/v1/responses', own], ['/v1/responses', 'not json'], ['/v1/messages', JSON.stringify(foreign)]]) {
+    await post(base, path, { body });
+    assert.equal(seen.at(-1).body.toString(), body, path);
+  }
 });

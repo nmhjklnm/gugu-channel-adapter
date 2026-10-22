@@ -66,15 +66,30 @@ function sseValue(frame) {
   return { hold: false };
 }
 
+// A reasoning item written by another channel may carry only `summary`. HAPI reads reasoning only from
+// `content`/`encrypted_content`, and DeepSeek thinking mode rejects a tool-call turn without it (400).
+export function fillReasoningContent(body) {
+  let value;
+  try { value = JSON.parse(body); } catch { return null; }
+  if (!Array.isArray(value?.input)) return null;
+  let filled = 0;
+  for (const item of value.input) {
+    if (item?.type !== 'reasoning' || item.content != null || item.encrypted_content != null || !Array.isArray(item.summary) || !item.summary.length) continue;
+    item.content = [{ type: 'reasoning_text', text: item.summary.map(part => part?.text ?? '').join('\n\n') }];
+    filled++;
+  }
+  return filled ? Buffer.from(JSON.stringify(value)) : null;
+}
+
 export function createHapiAdapter({ upstream = HAPI, prefixLimit = 64 * 1024, prefixWaitMs = 30_000, idleTimeoutMs = 120_000, jsonLimit = 1024 * 1024 } = {}) {
   const target = new URL(upstream);
   if (!['http:', 'https:'].includes(target.protocol) || target.username || target.password || target.search || target.hash) throw Error('Invalid fixed HAPI upstream');
   const transport = target.protocol === 'https:' ? https : http;
   const agent = new transport.Agent({ keepAlive: true, maxSockets: 128, maxFreeSockets: 16 });
   const active = new Set();
-  let requests = 0, normalizedErrors = 0;
+  let requests = 0, normalizedErrors = 0, reasoningFilled = 0;
   const server = http.createServer({ requestTimeout: 120_000, headersTimeout: 30_000, maxHeaderSize: 32 * 1024 }, (req, res) => {
-    if (req.method === 'GET' && req.url === '/healthz') { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: true, requests, normalized_errors: normalizedErrors, active_requests: active.size })); return; }
+    if (req.method === 'GET' && req.url === '/healthz') { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: true, requests, normalized_errors: normalizedErrors, reasoning_filled: reasoningFilled, active_requests: active.size })); return; }
     const path = req.url?.split('?')[0];
     if (!req.url?.startsWith('/') || req.url.startsWith('//') || !PATHS.test(path) || !(path === '/v1/models' ? req.method === 'GET' : req.method === 'POST')) {
       res.writeHead(404); res.end(); return;
@@ -175,8 +190,18 @@ export function createHapiAdapter({ upstream = HAPI, prefixLimit = 64 * 1024, pr
         else if (!res.writableFinished) res.destroy();
       } finally { clearTimeout(timer); }
     });
-    // Native HTTP piping keeps request bytes and backpressure intact; the adapter never parses prompts/tools.
-    req.pipe(outgoing);
+    // Native HTTP piping keeps request bytes and backpressure intact. Only a Responses body is read, to fill
+    // summary-only reasoning; it is forwarded byte-identical when nothing needs filling.
+    if (path !== '/v1/responses') { req.pipe(outgoing); return; }
+    // New API has already read and size-checked this body, so buffering it here adds no new bound.
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.once('end', () => {
+      const original = Buffer.concat(chunks);
+      const filled = fillReasoningContent(original);
+      if (filled) { reasoningFilled++; outgoing.setHeader('content-length', filled.length); }
+      outgoing.end(filled || original);
+    });
   });
   server.once('close', () => { for (const request of active) request.destroy(); agent.destroy(); });
   return server;

@@ -208,3 +208,14 @@ REGISTRY["hapi-error-envelope"] = Rule(
     added="2026-10-20",
     remove_when="HAPI 在提交响应前对参数拒绝、限流、过载直接返回正确 4xx/5xx，且绕过本实例重跑三协议流式、工具往返和真客户端均通过。已提交响应后的流内错误本身是正常协议行为，不作为永远保留此规则的理由。",
 )
+
+
+REGISTRY["responses-reasoning-content"] = Rule(
+    id="responses-reasoning-content", kind="request", runtime="node",
+    what="/v1/responses 请求的 input 里，只有 summary、没有 content 和 encrypted_content 的 reasoning 项，把 summary 文本补成 content:[{type:reasoning_text}]。没有这种项的请求原样转发，字节不变。",
+    when="同一个模型的渠道池里，别家上游只回 summary 形式的推理（如 kozeai 上的 deepseek-v4.1-flash）；网关失败转移后，下一轮回到 HAPI，Codex 会原样回传这些推理项。",
+    why="HAPI 只从 content / encrypted_content 读推理，不读 summary。DeepSeek 思考模式要求带工具调用的那一轮把推理正文回传，缺了就是上游 400 InvalidParameter，而且 400 不重试，用户这一轮直接断掉。",
+    evidence="2026-10-22 共享测试网关：钉渠道 4→60→4 可稳定复现第 3 步 400 InvalidParameter。同一份第 3 步输入交错各发 8 次：补 content 的 200×7（另 1 次 HAPI 卡满 180 s），不补的 400×7（另 1 次 502）。kozeai 回的 summary 就是推理原文，不是二次摘要。补写后的 Codex 形状任务（四次 shell 调用后作答）走完全程，答案正确。",
+    added="2026-10-22",
+    remove_when="HAPI 能读 summary 形式的 reasoning（绕过本规则，用 summary-only 推理项重放第 3 步得到 200），或者同一模型的渠道池里不再有只回 summary 的上游。",
+)

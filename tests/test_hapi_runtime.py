@@ -14,7 +14,7 @@ class HapiRuntimeTest(unittest.TestCase):
     def test_profile_uses_only_its_documented_runtime_rule(self):
         p = server.load_profile("hapi-errors", str(ROOT / "profiles"))
         self.assertEqual(p["runtime"], "node")
-        self.assertEqual(p["rules"], ["hapi-error-envelope"])
+        self.assertEqual(p["rules"], ["hapi-error-envelope", "responses-reasoning-content"])
         with self.assertRaisesRegex(ValueError, "Node HTTP runtime"):
             server.make_handler(p)
 

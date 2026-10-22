@@ -1,6 +1,6 @@
-# HAPI 专用错误实例（hapi-errors，#1）
+# HAPI 专用实例（hapi-errors，#1）
 
-Owner requested this HAPI-only exception on 2026-10-20. The New API binary stays the official pinned release. Protocol conversion, pricing and channel retry remain in New API. The adapter sends exactly one request to the fixed HAPI origin, preserving request/model/tool bytes. It does not store a key or log prompts, headers or vendor response bodies.
+Owner requested this HAPI-only exception on 2026-10-20. The New API binary stays the official pinned release. Protocol conversion, pricing and channel retry remain in New API. The adapter sends exactly one request to the fixed HAPI origin. It fixes only formats HAPI itself cannot read: the early error envelope below, and summary-only reasoning in Responses requests (see that section). All other request, model and tool bytes are preserved. It does not store a key or log prompts, headers or vendor response bodies.
 
 ## Error handling
 
@@ -13,7 +13,13 @@ Before response headers reach New API, inspect at most 64 KiB of SSE preface for
 - An interrupted/empty stream before commitment returns 502. After commitment it terminates the existing stream. Client disconnect aborts the HAPI connection.
 - HTTP request IDs are preserved; IDs carried inside a HAPI wrapper are copied into JSON and the `x-hapi-upstream-request-id` / `x-hapi-upstream-trace-id` headers. `/healthz` exposes only aggregate request/error/active counts for path verification. Only hop-by-hop/framing headers are removed or recomputed.
 
-This does not intercept 4router or v2api, fix HAPI parameter compatibility, force migration of existing session bindings, or guarantee a replay after partial output. Known parameter compatibility is still handled by existing gateway routes/rules.
+## Summary-only reasoning (Responses requests)
+
+Some upstreams in the same model pool return reasoning as `summary` only, with no `content` and no `encrypted_content`. kozeai does this for deepseek-v4.1-flash. After a gateway failover the next turn returns to HAPI, and Codex sends those items back as they are. HAPI reads reasoning only from `content`/`encrypted_content`. For a tool call made in thinking mode, the upstream then rejects the turn with 400 InvalidParameter, which the gateway does not retry.
+
+For `/v1/responses` only, the adapter reads the request body. Each `input` reasoning item that has a non-empty `summary` and neither `content` nor `encrypted_content` gets `content: [{type: "reasoning_text", text: <summary texts joined by blank lines>}]`, and `content-length` is recomputed. A body with no such item, a body that is not JSON, and every other path are forwarded byte-identical. `/healthz` counts rewritten requests as `reasoning_filled`. New API has already read and size-checked the body, so buffering it adds no new bound.
+
+This does not intercept 4router or v2api, fix other HAPI parameter compatibility, force migration of existing session bindings, or guarantee a replay after partial output. Known parameter compatibility is still handled by existing gateway routes/rules.
 
 ## Run and verify
 

@@ -1,9 +1,9 @@
 {
   "name": "hapi-errors",
   "runtime": "node",
-  "what": "普通 HAPI 渠道的专用错误适配：在响应提交前恢复包装错误，保留厂商请求号，不修改请求、模型和工具形状；独立于 Gemini schema 规则。",
+  "what": "普通 HAPI 渠道的专用适配，只修 HAPI 自己读不懂的格式：在响应提交前恢复包装错误、保留厂商请求号；Responses 请求里只有 summary 的 reasoning 项补上 content。其余请求字节、模型和工具形状不变；独立于 Gemini schema 规则。",
   "used_by": "共享测试 HAPI 渠道 gugu-hapi-platform（4）和 hapi-free-luna-responses（80）；Docker 内部端口 8318，无宿主发布端口。",
   "upstream": "https://hapi.hc11.org",
-  "rules": ["hapi-error-envelope"],
-  "remove_when": "HAPI 直接正确返回早期错误状态与请求号，绕过本实例后三协议流式、工具往返和真客户端通过；先恢复渠道直连，再停止实例。"
+  "rules": ["hapi-error-envelope", "responses-reasoning-content"],
+  "remove_when": "两条规则都满足各自的可删条件（见 docs/adapters.md）后，先恢复渠道直连，再停止实例。"
 }
