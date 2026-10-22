@@ -27,6 +27,7 @@
 |---|---|---|---|
 | hapi-gemini | HAPI | 18770 | gugu-hapi-gemini（Gemini 首选档） |
 | 4router-gemini | 4Router | 18771 | 4router-gemini（Gemini 兜底档） |
+| glm-gateway | GLM 网关（Bedrock） | 18772（经 SOCKS5 出口到上游） | gugu-glm-gateway（删 Bedrock 拒收的空 system 消息）；见 [docs/vendor-reports/glm-bedrock-2026-10-23.md](docs/vendor-reports/glm-bedrock-2026-10-23.md) |
 | hapi-errors | HAPI | Docker 内部 8318 | 普通 HAPI 渠道的早期错误包装、Responses 里只有 summary 的推理补 content；部署见 [docs/hapi-errors.md](docs/hapi-errors.md) |
 
 ## 不做什么

@@ -1,0 +1,8 @@
+{
+  "name": "glm-gateway",
+  "what": "挡在网关与 GLM 网关（其后是 AWS Bedrock 上的 Claude）之间：删掉 Bedrock 拒收的空 system 消息/空文本块。其余请求字节不变。",
+  "used_by": "共享测试网关渠道 15 gugu-glm-gateway（claude-opus-5-5 等）。GLM 网关只能经网关机的 SOCKS5 出口到达，部署时给 UPSTREAM_SOCKS5。",
+  "upstream": "https://api-gateway.glm.ai",
+  "rules": ["drop-empty-system-message"],
+  "remove_when": "GLM 网关接受空 system 消息（规则 drop-empty-system-message 的可删条件），或渠道不再经 GLM 网关提供 Claude；先把渠道 base_url 改回直连并恢复渠道自己的代理，再停实例。"
+}

@@ -4,6 +4,7 @@ from __future__ import annotations
 import http.client
 import json
 import os
+import socket
 import ssl
 import sys
 import urllib.parse
@@ -17,6 +18,37 @@ HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", 
 
 # The Node runtime implements exactly these rules; a profile cannot switch one of them off or add a Python rule.
 NODE_RULES = ["hapi-error-envelope", "responses-reasoning-content"]
+
+
+def _recv_exact(sock, n: int) -> bytes:
+    buf = b""
+    while len(buf) < n:
+        chunk = sock.recv(n - len(buf))
+        if not chunk:
+            raise OSError("socks5: proxy closed the connection")
+        buf += chunk
+    return buf
+
+
+def socks5_connect(proxy: str, host: str, port: int, timeout: float) -> socket.socket:
+    """经 SOCKS5（无认证）连到 host:port；域名交给代理解析（有的上游只在出口那头解析得到）。"""
+    ph, pp = proxy.rsplit(":", 1)
+    s = socket.create_connection((ph, int(pp)), timeout=timeout)
+    try:
+        s.sendall(b"\x05\x01\x00")
+        if _recv_exact(s, 2) != b"\x05\x00":
+            raise OSError("socks5: proxy refused no-auth")
+        h = host.encode("idna")
+        s.sendall(b"\x05\x01\x00\x03" + bytes([len(h)]) + h + port.to_bytes(2, "big"))
+        rep = _recv_exact(s, 4)
+        if rep[1] != 0:
+            raise OSError(f"socks5: connect to {host}:{port} failed, reply {rep[1]}")
+        _recv_exact(s, {1: 4, 4: 16}.get(rep[3]) or _recv_exact(s, 1)[0])
+        _recv_exact(s, 2)
+        return s
+    except BaseException:
+        s.close()
+        raise
 
 
 def load_profile(name_or_path: str, profiles_dir: str) -> dict:
@@ -40,6 +72,7 @@ def make_handler(profile: dict, read_timeout: int = 900):
     if profile.get("runtime", "python") != "python":
         raise ValueError("此 profile 使用 Node HTTP runtime，请通过 channel_adapter serve 启动")
     upstream = os.environ.get("UPSTREAM") or profile["upstream"]   # 允许部署时/测试时覆盖
+    proxy = os.environ.get("UPSTREAM_SOCKS5")   # 部署时给：上游只能经这个出口到达（host:port）
     req_rules = R.request_rules(profile["rules"])
     resp_rules = R.response_rules(profile["rules"])
 
@@ -74,6 +107,10 @@ def make_handler(profile: dict, read_timeout: int = 900):
             if raw:
                 hdr["Content-Length"] = str(len(raw))
             try:
+                if proxy:
+                    port = u.port or (443 if u.scheme == "https" else 80)
+                    sock = socks5_connect(proxy, u.hostname, port, read_timeout)
+                    conn.sock = kw["context"].wrap_socket(sock, server_hostname=u.hostname) if u.scheme == "https" else sock
                 conn.request(self.command, self.path, body=raw or None, headers=hdr)
                 r = conn.getresponse()
             except Exception as e:
@@ -124,7 +161,8 @@ def make_handler(profile: dict, read_timeout: int = 900):
 def serve(profile: dict, bind: str, port: int):
     srv = ThreadingHTTPServer((bind, port), make_handler(profile))
     srv.daemon_threads = True
-    sys.stderr.write(f"gugu-channel-adapter profile={profile['name']} {bind}:{port} -> {os.environ.get('UPSTREAM') or profile['upstream']}\n")
+    via = f" via socks5 {os.environ['UPSTREAM_SOCKS5']}" if os.environ.get("UPSTREAM_SOCKS5") else ""
+    sys.stderr.write(f"gugu-channel-adapter profile={profile['name']} {bind}:{port} -> {os.environ.get('UPSTREAM') or profile['upstream']}{via}\n")
     for i in profile["rules"]:
         sys.stderr.write(f"  规则 {i}: {R.REGISTRY[i].what}\n")
     sys.stderr.flush()
